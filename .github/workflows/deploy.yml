@@ -1,0 +1,45 @@
+name: Build and Deploy DriftSTAD3
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages-${{ github.repository }}
+  cancel-in-progress: true
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/configure-pages@v5
+      - name: Set Pages path
+        run: |
+          r="${GITHUB_REPOSITORY#*/}"
+          echo "PAGES_BASE_PATH=/${r}/" >> "$GITHUB_ENV"
+      - name: Install deps
+        working-directory: ./app
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --legacy-peer-deps
+          npm install typescript @types/node vite --save-dev --legacy-peer-deps
+          sed -i '/"baseUrl":/d' tsconfig.json
+          grep -q '"moduleResolution"' tsconfig.json || sed -i 's/"target":/"moduleResolution": "bundler",\n    "target":/' tsconfig.json
+          ./node_modules/.bin/tsc --version
+      - name: Build
+        working-directory: ./app
+        run: |
+          ./node_modules/.bin/tsc -p tsconfig.json --noEmit
+          ./node_modules/.bin/vite build
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: ./app/dist/public }
+      - id: deployment
+        uses: actions/deploy-pages@v4
